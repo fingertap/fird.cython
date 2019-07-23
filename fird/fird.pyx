@@ -1,8 +1,63 @@
 import numpy as np
+from libc.math cimport exp, log
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
+cdef inline double clip(double target, double lower, double higher):
+    if target < lower:
+        return lower
+    if target > higher:
+        return higher
+    return target
+
+cdef inline double logSumExp(double* array, Py_ssize_t size):
+    cdef double minv = 99999., sumv = 0.
+    cdef Py_ssize_t i
+    for i in range(size):
+        array[i] = clip(array[i], -500., 500.)
+        if array[i] < minv:
+            minv = array[i]
+    for i in range(size):
+        sumv += exp(array[i] - minv)
+    return log(sumv) + minv
+
+cdef inline void sparseUpdate(int length, double* theta, double* weight, double lamb):
+    cdef double normalizer, newTheta, weightSum = 0.
+    cdef Py_ssize_t i, r
+    for i in range(length):
+        weightSum += weight[i]
+    for r in range(10):
+        normalizer = 0.
+        # Update
+        for i in range(length):
+            newTheta = (weight[i] + theta[i] * length * lamb) / (weightSum + lamb / theta[i]) 
+            normalizer += newTheta
+            theta[i] = newTheta
+        for i in range(length):
+            theta[i] /= normalizer
+
+cdef inline void smoothUpdate(int length, double* theta, double* weight, double lamb):
+    cdef double sumv = 0.
+    cdef Py_ssize_t i
+    for i in range(length):
+        theta[i] += lamb
+        sumv += theta[i]
+    for i in range(length):
+        theta[i] /= sumv
+
 cdef class Fird:
-    def __cinit__(self, int G, double eps=.1, int max_iter=50,
+    cdef bint trained
+    cdef int random_state, max_iter
+    cdef double lambda_pi, lambda_alpha, eps
+    cdef int N, M, G
+    cdef int [:] D
+    cdef double *pi
+    cdef double **mu
+    cdef double ***alpha
+    cdef double ***beta
+    cdef double **phi
+    cdef double ***gamma
+    cdef bint *is_outlier
+    def __cinit__(self, int G=50, double eps=.1, int max_iter=50,
                   double lambda_pi=0.9, double lambda_alpha=0.9):
         self.G = G
         self.max_iter = max_iter
@@ -10,7 +65,7 @@ cdef class Fird:
         self.lambda_alpha = lambda_alpha
         self.eps = eps
 
-    cdef parse_shape(int [:, :] X):
+    cdef parse_shape(self, int [:, :] X):
         self.N, self.M = X.shape[:2]
         self.D = np.max(X, axis=0)
 
@@ -25,8 +80,11 @@ cdef class Fird:
 
         ## Allocate intermediate varaibles
         ## NOTE: _phi is in log scale in order to prevent overflow
-        cdef double *_phi, _gamma, _gammaBar
-        cdef double *_pi, *_alpha, *_beta
+        cdef double  _gamma, _gammaBar
+        cdef double *_phi
+        cdef double *_pi
+        cdef double *_alpha
+        cdef double *_beta
         cdef Py_ssize_t max_dim = np.max(self.D)
         _phi = <double*> PyMem_Malloc(self.G * sizeof(double))
         _pi = <double*> PyMem_Malloc(self.G * sizeof(double))
@@ -60,7 +118,7 @@ cdef class Fird:
                 for m in range(self.M):
                     weight = self.lambda_pi * self.N / (2. * self.G * self.D[m])
                     sumv = 0.
-                    for i range(self.D[m]):
+                    for i in range(self.D[m]):
                         sumv -= log(self.alpha[g][m][i]) - log(self.beta[g][m][i])
                     new_likelihood += weight * sumv
 
@@ -71,11 +129,11 @@ cdef class Fird:
                 for n in range(self.N):
                     phi_sum += self.phi[n][g]
                 _pi[g] = phi_sum / self.N
-                for m in range(slef.M):
+                for m in range(self.M):
                     mu_sum = 0.
                     for n in range(self.N):
                         muSum += self.phi[n][g] * self.gamma[n][g][m]
-                    self.mu[g][m] = muSum / phiSum
+                    self.mu[g][m] = muSum / phi_sum
                     for i in range(self.D[m]):
                         _alpha[i] = _beta[i] = 0.
                     for n in range(self.N):
@@ -84,7 +142,7 @@ cdef class Fird:
                     weight = self.lambda_alpha * self.N / (self.G * 2. * self.D[m])
                     sparseUpdate(self.D[m], self.alpha[g][m], _alpha, weight)
                     smoothUpdate(self.D[m], self.beta[g][m], _beta, weight)
-            sparseUpdate(G, self.pi, _pi, self.lambda_pi / self.G)
+            sparseUpdate(self.G, self.pi, _pi, self.lambda_pi / self.G)
 
             # Smoothing
             for g in range(self.G):
@@ -162,14 +220,16 @@ cdef class Fird:
 
     cdef initialize(self):
         cdef Py_ssize_t n, g, m, i
+        cdef double [:, :] data
+        cdef double [:] sums
         for n in range(self.N):
             self.is_outlier[n] = False
         for g in range(self.G):
             self.pi[g] = 1. / self.G
             for m in range(self.M):
                 self.mu[g][m] = 0.5
-                cdef double [:, :] data = np.random.rand(2, self.D[m])
-                cdef double [:] sums = np.sum(alpha, axis=1)
+                data = np.random.rand(2, self.D[m])
+                sums = np.sum(data, axis=1)
                 for i in range(self.D[m]):
                     self.alpha[g][m][i] = data[0][i] / sums[0]
                     self.beta[g][m][i] = data[1][i] / sums[1]
