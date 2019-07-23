@@ -2,7 +2,7 @@ import os
 from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 
-NAME = 'FIRD'
+NAME = 'fird'
 
 AUTHOR = 'Han Zhang'
 

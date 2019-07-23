@@ -1,4 +1,5 @@
 import numpy as np
+cimport numpy as np
 from libc.math cimport exp, log
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 
@@ -69,7 +70,7 @@ cdef class Fird:
         self.N, self.M = X.shape[:2]
         self.D = np.max(X, axis=0)
 
-    def fit(self, int [:, :] X):
+    def fit_transform(self, int [:, :] X):
         # Cleaning and preparing
         self.dealloc()
         self.parse_shape(X)
@@ -189,6 +190,14 @@ cdef class Fird:
 
         # Finish training
         self.trained = True
+
+        # Generate returning values
+        resp, is_outlier = np.zeros((self.N, self.G)), np.zeros(self.N)
+        for n in range(self.N):
+            is_outlier = self.is_outlier[n]
+            for g in range(self.G):
+                resp[n][g] = self.phi[n][g]
+        return resp, is_outlier
 
     cdef malloc(self):
         # TODO: memory check
