@@ -40,5 +40,5 @@ setup(
     url=GITHUB,
     license='MIT',
     include_dirs=[np.get_include()],
-    install_requires=['Cython']
+    install_requires=['Cython', 'numpy', 'matplotlib']
 )
