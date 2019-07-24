@@ -39,5 +39,6 @@ setup(
     author_email=AUTHOR_EMAIL,
     url=GITHUB,
     license='MIT',
-    include_dirs=[np.get_include()]
+    include_dirs=[np.get_include()],
+    install_requires=['Cython']
 )
