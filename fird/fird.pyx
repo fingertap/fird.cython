@@ -194,13 +194,16 @@ cdef class Fird:
         self.trained = True
         return np.asarray(self.phi), np.asarray(self.is_outlier, dtype=np.bool)
 
-    def assign_labels(self, double [:] group_label):
+    def assign_labels(self, group_label, double outlier_label=0.):
         if not self.trained:
             raise ValueError("Model not trained yet!")
         assert group_label.shape[0] == self.G
         cdef Py_ssize_t n, g
         res = np.zeros(self.N)
         for n in range(self.N):
+            if self.is_outlier[n]:
+                res[n] = outlier_label
+                continue
             for g in range(self.G):
                 res[n] += self.phi[n][g] * group_label[g]
         return res
