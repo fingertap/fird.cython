@@ -2,6 +2,7 @@ import numpy as np
 cimport numpy as np
 from libc.math cimport exp, log
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
+import matplotlib.pyplot as plt
 
 cdef inline double clip(double target, double lower, double higher):
     if target < lower:
@@ -47,6 +48,13 @@ cdef inline void smoothUpdate(int length, double* theta, double [:] weight, doub
         sumv += theta[i]
     for i in range(length):
         theta[i] /= sumv
+
+def bincount(array, size):
+    res = np.zeros(size, dtype=np.long)
+    cdef Py_ssize_t i
+    for i in range(size):
+        res[i] = len(array[array==i])
+    return res
 
 cdef class Fird:
     cdef bint trained
@@ -197,8 +205,44 @@ cdef class Fird:
                 res[n] += self.phi[n][g] * group_label[g]
         return res
 
-    def display(self, g, show_outliers=True):
+    def display(self, label, show_outliers=True):
+        # label = 1 means fraud
+        if not self.trained:
+            raise ValueError("Model not trained yet!")
+        assert len(label) == self.N
         assignments = np.argmax(self.phi, axis=1)
+        f = plt.figure(figsize=(15, 7))
+        width, indeces = 0.5, np.arange(self.G)
+        if show_outliers:
+            mask = np.asarray(self.is_outlier, dtype=np.bool)
+            normal_counts = bincount(assignments[(label == 0) & ~mask], self.G)
+            fraud_counts = bincount(assignments[(label == 1) & ~mask], self.G)
+            filtered_normal = bincount(assignments[(label == 0) & mask], self.G)
+            filtered_fraud = bincount(assignments[(label == 1) & mask], self.G)
+            p1 = plt.bar(indeces, filtered_fraud, width, color='#9e9e9e')
+            p2 = plt.bar(indeces, fraud_counts, width, bottom=filtered_fraud)
+            p3 = plt.bar(indeces, filtered_normal, width,
+                         bottom=filtered_fraud + fraud_counts,
+                         color='#000000')
+            p4 = plt.bar(indeces, normal_counts, width,
+                         bottom=filtered_fraud + fraud_counts + filtered_normal)
+            legends = ['Normal', 'Filtered normal', 'Fraud', 'Filtered fraud']
+            plt.legend((p4[0], p3[0], p2[0], p1[0]), legends)
+        else:
+            normal_counts = bincount(assignments[label==0], self.G)
+            fraud_counts = bincount(assignments[label==1], self.G)
+            p1 = plt.bar(indeces, fraud_counts, width)
+            p2 = plt.bar(indeces, normal_counts, width, bottom=fraud_counts)
+            plt.legend((p2[0], p1[0]), ['Normal', 'Fraud'])
+
+        ylim = bincount(assignments, self.G).max() * 1.1
+        plt.title('User Counts in Each Group')
+        plt.ylim([0, ylim])
+        plt.xticks(
+            indeces, ['group_{}'.format(x)for x in range(self.G)], rotation=70
+        )
+        plt.ylabel('User Count')
+        return f
 
     cdef malloc(self):
         # TODO: memory check
