@@ -4,14 +4,14 @@ from libc.math cimport exp, log
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import matplotlib.pyplot as plt
 
-cdef inline double clip(double target, double lower, double higher):
+cdef inline double clip(double target, double lower, double higher) except *:
     if target < lower:
         return lower
     if target > higher:
         return higher
     return target
 
-cdef inline double logSumExp(double [:] array, Py_ssize_t size):
+cdef inline double logSumExp(double [:] array, Py_ssize_t size) except *:
     cdef double minv = 99999., sumv = 0.
     cdef Py_ssize_t i
     for i in range(size):
@@ -40,7 +40,7 @@ cdef inline void sparseUpdate(int length, double* theta, double [:] weight, doub
         for i in range(length):
             theta[i] /= normalizer
 
-cdef inline void smoothUpdate(int length, double* theta, double [:] weight, double lamb):
+cdef inline void smoothUpdate(int length, double* theta, double [:] weight, double lamb) except *:
     cdef double sumv = 0.
     cdef Py_ssize_t i
     for i in range(length):
@@ -112,11 +112,11 @@ cdef class Fird:
                     for m in range(self.M):
                         _gamma = self.mu[g][m] * self.alpha[g][m][X[n][m]]
                         _gammaBar = (1. - self.mu[g][m]) * self.beta[g][m][X[n][m]]
-                        _phi[g] += log(_gamma + _gammaBar)
                         if _gamma + _gammaBar > 1e-8:
                             self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar)
                         else:
                             self.gamma[n][g][m] = 0.5
+                        _phi[g] += log(self.gamma[n][g][m])
                 # Note that by logSumExp, the array signal will get cut
                 row_sum = logSumExp(_phi, self.G)
                 for g in range(self.G):
@@ -192,9 +192,9 @@ cdef class Fird:
 
         # Finish training
         self.trained = True
-        return np.asarray(self.phi), np.asarray(self.is_outlier)
+        return np.asarray(self.phi), np.asarray(self.is_outlier, dtype=np.bool)
 
-    def assign_labels(self, long [:] group_label):
+    def assign_labels(self, double [:] group_label):
         if not self.trained:
             raise ValueError("Model not trained yet!")
         assert group_label.shape[0] == self.G
