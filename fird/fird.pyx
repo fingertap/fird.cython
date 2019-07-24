@@ -115,7 +115,7 @@ cdef class Fird:
                         if _gamma + _gammaBar > 1e-8:
                             self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar)
                         else:
-                            self.gamma[n][g][m] = 0.5
+                            self.gamma[n][g][m] = exp(log(_gamma) - log(_gamma + _gammaBar))
                         _phi[g] += log(self.gamma[n][g][m])
                 # Note that by logSumExp, the array signal will get cut
                 row_sum = logSumExp(_phi, self.G)
