@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from setuptools import setup, Extension, find_packages
 from Cython.Build import cythonize
 
@@ -23,7 +24,7 @@ def long_desc():
 ext_modules = [
     Extension("fird.fird",
               sources=["fird/fird.pyx"],
-              libraries=["m", "fird/fird.pxd"]  # Unix-like specific
+              libraries=["m"]  # Unix-like specific
               )
 ]
 
@@ -37,5 +38,6 @@ setup(
     author=AUTHOR,
     author_email=AUTHOR_EMAIL,
     url=GITHUB,
-    license='MIT'
+    license='MIT',
+    include_dirs=[np.get_include()]
 )
