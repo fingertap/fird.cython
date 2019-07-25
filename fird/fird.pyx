@@ -1,6 +1,8 @@
 import numpy as np
 cimport numpy as np
+import scipy
 from libc.math cimport exp, log
+from libc.stdlib cimport rand
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import matplotlib.pyplot as plt
 
@@ -12,15 +14,15 @@ cdef inline double clip(double target, double lower, double higher) except *:
     return target
 
 cdef inline double logSumExp(double [:] array, Py_ssize_t size) except *:
-    cdef double minv = 99999., sumv = 0.
+    cdef double maxv = -999., sumv = 0.
     cdef Py_ssize_t i
     for i in range(size):
-        array[i] = clip(array[i], -20., 20.)
-        if array[i] < minv:
-            minv = array[i]
+        array[i] = clip(array[i], -500., 500.)
+        if array[i] > maxv:
+            maxv = array[i]
     for i in range(size):
-        sumv += exp(array[i] - minv)
-    return log(sumv) + minv
+        sumv += exp(array[i] - maxv)
+    return log(sumv) + maxv
 
 cdef inline void sparseUpdate(int length, double* theta, double [:] weight, double lamb) except *:
     cdef double normalizer, newTheta, weightSum = 0.
@@ -56,6 +58,10 @@ def bincount(array, size):
         res[i] = len(array[array==i])
     return res
 
+cdef inline void check_nan(double param, name):
+    if np.isnan(param):
+        raise ValueError('{} contains NaN!'.format(name))
+
 cdef class Fird:
     cdef bint trained
     cdef int random_state, max_iter
@@ -79,13 +85,24 @@ cdef class Fird:
 
     cdef parse_shape(self, long [:, :] X):
         self.N, self.M = X.shape[:2]
-        self.D = np.max(X, axis=0)
+        self.D = np.max(X, axis=0) + 1
+    
+    cdef check_params(self):
+        cdef Py_ssize_t g, m, i
+        for g in range(self.G):
+            check_nan(self.pi[g], 'pi')
+            for m in range(self.M):
+                check_nan(self.mu[g][m], 'mu')
+                for i in range(self.D[m]):
+                    check_nan(self.alpha[g][m][i], 'alpha')
+                    check_nan(self.beta[g][m][i], 'beta')
 
     def fit_transform(self, long [:, :] X):
         # Cleaning and preparing
         self.dealloc()
         self.parse_shape(X)
         self.malloc()
+        self.check_params()
 
         # Start training
 
@@ -108,21 +125,17 @@ cdef class Fird:
             new_likelihood = 0.
             for n in range(self.N):
                 for g in range(self.G):
-                    _phi[g] = log(self.pi[g])
+                    _phi[g] = log(self.pi[g] + 1e-10)
                     for m in range(self.M):
                         _gamma = self.mu[g][m] * self.alpha[g][m][X[n][m]]
                         _gammaBar = (1. - self.mu[g][m]) * self.beta[g][m][X[n][m]]
-                        if _gamma + _gammaBar > 1e-8:
-                            self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar)
-                        else:
-                            self.gamma[n][g][m] = 0.5
-                        _phi[g] += log(self.gamma[n][g][m])
+                        self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar + 1e-10)
+                        _phi[g] += log(self.gamma[n][g][m] + 1e-10)
                 # Note that by logSumExp, the array signal will get cut
                 row_sum = logSumExp(_phi, self.G)
+                # row_sum = scipy.special.logsumexp(_phi)
                 for g in range(self.G):
                     self.phi[n][g] = exp(_phi[g] - row_sum)
-                    if np.isnan(self.phi[n][g]):
-                        print(_phi[g], row_sum)
                 new_likelihood += row_sum
             ## The regularizers
             for g in range(self.G):
@@ -133,6 +146,7 @@ cdef class Fird:
                     for i in range(self.D[m]):
                         sumv -= log(self.alpha[g][m][i]) - log(self.beta[g][m][i])
                     new_likelihood += weight * sumv
+
 
             # M step
             ## Update the parameters using the evidence
@@ -155,6 +169,7 @@ cdef class Fird:
                     sparseUpdate(self.D[m], self.alpha[g][m], _alpha, weight)
                     smoothUpdate(self.D[m], self.beta[g][m], _beta, weight)
             sparseUpdate(self.G, self.pi, _pi, self.lambda_pi / self.G)
+
 
             # Smoothing
             for g in range(self.G):
@@ -252,25 +267,35 @@ cdef class Fird:
     cdef malloc(self):
         # TODO: memory check
         cdef Py_ssize_t g, m, n
-        cdef double [:, :] data
-        cdef double [:] sums
+        cdef double suma, sumb
+        # cdef double [:, :] data
+        # cdef double [:] sums
         # Init the parametes
         self.mu = np.full((self.G, self.M), 0.5)
         self.pi = <double*> PyMem_Malloc(self.G * sizeof(double))
         self.alpha = <double***> PyMem_Malloc(self.G * sizeof(double**))
         self.beta = <double***> PyMem_Malloc(self.G * sizeof(double**))
+        # cdef double [:] pi_init = np.random.rand(self.G)
+        # cdef double pi_sum = np.sum(pi_init)
         for g in range(self.G):
             self.alpha[g] = <double**> PyMem_Malloc(self.M * sizeof(double*))
             self.beta[g] = <double**> PyMem_Malloc(self.M * sizeof(double*))
+            # self.pi[g] = pi_init[g] / pi_sum
             self.pi[g] = 1. / self.G
             for m in range(self.M):
                 self.alpha[g][m] = <double*> PyMem_Malloc(self.D[m] * sizeof(double))
                 self.beta[g][m] = <double*> PyMem_Malloc(self.D[m] * sizeof(double))
-                data = np.random.rand(2, self.D[m]) + 0.1
-                sums = np.sum(data, axis=1)
+                # data = np.random.randint(1, 10, size=(2, self.D[m])).astype(np.double)
+                # sums = np.sum(data, axis=1)
+                suma = sumb = 0.
                 for i in range(self.D[m]):
-                    self.alpha[g][m][i] = data[0][i] / sums[0]
-                    self.beta[g][m][i] = data[1][i] / sums[1]
+                    self.alpha[g][m][i] = rand()
+                    self.beta[g][m][i] = rand()
+                    suma += self.alpha[g][m][i]
+                    sumb += self.beta[g][m][i]
+                for i in range(self.D[m]):
+                    self.alpha[g][m][i] /= suma
+                    self.beta[g][m][i] /= sumb
         
         # Init the evidence
         self.phi = np.zeros((self.N, self.G))
