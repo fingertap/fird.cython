@@ -97,6 +97,16 @@ cdef class Fird:
                     check_nan(self.alpha[g][m][i], 'alpha')
                     check_nan(self.beta[g][m][i], 'beta')
 
+    def get_params(self):
+        cdef Py_ssize_t g, m, i
+        pi = np.array([self.pi[g] for g in range(self.G)])
+        mu = np.asarray(self.mu)
+        alpha = np.array([[[self.alpha[g][m][i] for i in range(self.D[m])]
+                           for m in range(self.M)] for g in range(self.G)])
+        beta = np.array([[[self.beta[g][m][i] for i in range(self.D[m])]
+                           for m in range(self.M)] for g in range(self.G)])
+        return pi, mu, alpha, beta
+
     def fit_transform(self, long [:, :] X):
         # Cleaning and preparing
         self.dealloc()
@@ -130,7 +140,7 @@ cdef class Fird:
                         _gamma = self.mu[g][m] * self.alpha[g][m][X[n][m]]
                         _gammaBar = (1. - self.mu[g][m]) * self.beta[g][m][X[n][m]]
                         self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar + 1e-10)
-                        _phi[g] += log(self.gamma[n][g][m] + 1e-10)
+                        _phi[g] += log(_gamma + _gammaBar + 1e-10)
                 # Note that by logSumExp, the array signal will get cut
                 row_sum = logSumExp(_phi, self.G)
                 # row_sum = scipy.special.logsumexp(_phi)
