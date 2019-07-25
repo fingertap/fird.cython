@@ -15,7 +15,7 @@ cdef inline double logSumExp(double [:] array, Py_ssize_t size) except *:
     cdef double minv = 99999., sumv = 0.
     cdef Py_ssize_t i
     for i in range(size):
-        array[i] = clip(array[i], -500., 500.)
+        array[i] = clip(array[i], -20., 20.)
         if array[i] < minv:
             minv = array[i]
     for i in range(size):
@@ -115,12 +115,14 @@ cdef class Fird:
                         if _gamma + _gammaBar > 1e-8:
                             self.gamma[n][g][m] = _gamma / (_gamma + _gammaBar)
                         else:
-                            self.gamma[n][g][m] = exp(log(_gamma) - log(_gamma + _gammaBar))
+                            self.gamma[n][g][m] = 0.5
                         _phi[g] += log(self.gamma[n][g][m])
                 # Note that by logSumExp, the array signal will get cut
                 row_sum = logSumExp(_phi, self.G)
                 for g in range(self.G):
                     self.phi[n][g] = exp(_phi[g] - row_sum)
+                    if np.isnan(self.phi[n][g]):
+                        print(_phi[g], row_sum)
                 new_likelihood += row_sum
             ## The regularizers
             for g in range(self.G):
