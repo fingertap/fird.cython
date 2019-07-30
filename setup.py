@@ -32,7 +32,7 @@ setup(
     name=NAME,
     version=VERSION,
     ext_modules=cythonize(ext_modules),
-    packages=find_packages(),
+    packages=find_packages(exclude=('test')),
     description=DESCRIPTION,
     long_description=long_desc(),
     author=AUTHOR,

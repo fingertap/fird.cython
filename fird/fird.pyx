@@ -136,7 +136,7 @@ cdef class Fird:
             for n in range(self.N):
                 for g in range(self.G):
                     _phi[g] = log(self.pi[g] + 1e-10)
-                    if self.pi[g] < 1e-6:
+                    if self.pi[g] < 1e-8:
                         continue
                     for m in range(self.M):
                         _gamma = self.mu[g][m] * self.alpha[g][m][X[n][m]]
@@ -151,7 +151,7 @@ cdef class Fird:
                 new_likelihood += row_sum
             ## The regularizers
             for g in range(self.G):
-                if self.lambda_pi < 1e-8:
+                if self.pi[g] < 1e-8:
                     continue
                 new_likelihood -= self.lambda_pi * log(self.pi[g])
                 for m in range(self.M):
@@ -165,12 +165,13 @@ cdef class Fird:
             # M step
             ## Update the parameters using the evidence
             for g in range(self.G):
+                if self.pi[g] < 1e-8:
+                    _pi[g] = 0.
+                    continue
                 phi_sum = 0.
                 for n in range(self.N):
                     phi_sum += self.phi[n][g]
                 _pi[g] = phi_sum / self.N
-                if _pi[g] < 1e-8:
-                    continue
                 for m in range(self.M):
                     mu_sum = 0.
                     for n in range(self.N):
