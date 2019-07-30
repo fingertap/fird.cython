@@ -34,7 +34,7 @@ def run_fird(x, G, lambda_pi, lambda_alpha):
                  lambda_alpha=lambda_alpha, max_iter=100)
     resp, _ = model.fit_transform(x.astype(np.long))
     assignment = np.argmax(resp, axis=1)
-    return scoring(gid, assignment), time.time() - start
+    return scoring(gid, assignment), time.time() - start, model
 
 
 N = 2000
@@ -49,4 +49,4 @@ alpha = np.array([[sparse_psimplex(D[m]) for m in range(M)] for _ in range(G)])
 
 x, gid = generate_dataset(N, G, M, D, pi, mu, alpha)
 
-print(run_fird(x, 20, 0.9, 0.9))
+scores, time_cost, model = run_fird(x, 20, 0.9, 0.9)
