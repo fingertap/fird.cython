@@ -1,4 +1,4 @@
-# FIRD: Fraud Detection by Simultaneous Feature Selection and Clustering
+# FIRD: Modeling Heterogeneous Statistical Patterns In High-dimensional Data By Adversarial Distributions: An Unsupervised Generative Framework
 
 This is a [Cython](https://cython.org/) implementation of the clustering algorithm FIRD.
 
